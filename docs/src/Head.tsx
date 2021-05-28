@@ -22,6 +22,7 @@ const Dev: React.FC<Props> = (props) => (
 
     <script src="/scripts/prism.js" />
     <script src="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js" />
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML' async />
     <link href="/styles/content.css" rel="stylesheet" />
   </head>
 );
@@ -40,11 +41,12 @@ const Prod: React.FC<Props> = (props) => (
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
+    <script src={`${process.env.PATH_PREFIX}/scripts/prism.js`} />
     <script
       type="text/javascript"
       src="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js"
     ></script>
-    <script src={`${process.env.PATH_PREFIX}/scripts/prism.js`} />
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML' async />
     <link
       href={`${process.env.PATH_PREFIX}/styles/content.css`}
       rel="stylesheet"
