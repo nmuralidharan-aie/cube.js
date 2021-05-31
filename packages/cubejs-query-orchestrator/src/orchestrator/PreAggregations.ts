@@ -302,14 +302,6 @@ class PreAggregationLoadCache {
 }
 
 class PreAggregationLoader {
-  private redisPrefix: string;
-
-  private driverFactory: DriverFactory;
-
-  private logger: any;
-
-  private queryCache: any;
-
   // eslint-disable-next-line no-use-before-define
   private preAggregations: PreAggregations;
 
@@ -330,10 +322,10 @@ class PreAggregationLoader {
   private externalRefresh: boolean;
 
   public constructor(
-    redisPrefix,
-    clientFactory: DriverFactory,
-    logger,
-    queryCache,
+    private readonly redisPrefix: string,
+    private readonly driverFactory: DriverFactory,
+    private readonly logger: any,
+    private readonly queryCache: QueryCache,
     // eslint-disable-next-line no-use-before-define
     preAggregations: PreAggregations,
     preAggregation,
@@ -341,10 +333,6 @@ class PreAggregationLoader {
     loadCache,
     options: any = {}
   ) {
-    this.redisPrefix = redisPrefix;
-    this.driverFactory = clientFactory;
-    this.logger = logger;
-    this.queryCache = queryCache;
     this.preAggregations = preAggregations;
     this.preAggregation = preAggregation;
     this.preAggregationsTablesToTempTables = preAggregationsTablesToTempTables;
@@ -626,7 +614,12 @@ class PreAggregationLoader {
     };
   }
 
-  protected async refreshImplStoreInSourceStrategy(client, newVersionEntry, saveCancelFn, invalidationKeys) {
+  protected async refreshImplStoreInSourceStrategy(
+    client: DriverInterface,
+    newVersionEntry,
+    saveCancelFn,
+    invalidationKeys
+  ) {
     const [loadSql, params] =
         Array.isArray(this.preAggregation.loadSql) ? this.preAggregation.loadSql : [this.preAggregation.loadSql, []];
     const targetTableName = this.targetTableName(newVersionEntry);
@@ -841,8 +834,9 @@ class PreAggregationLoader {
     });
   }
 
-  protected async dropOrphanedTables(client, justCreatedTable, saveCancelFn) {
+  protected async dropOrphanedTables(client: DriverInterface, justCreatedTable: string, saveCancelFn) {
     await this.preAggregations.addTableUsed(justCreatedTable);
+
     const actualTables = await client.getTablesQuery(this.preAggregation.preAggregationsSchema);
     const versionEntries = tablesToVersionEntries(this.preAggregation.preAggregationsSchema, actualTables);
     const versionEntriesToSave = R.pipe<
@@ -874,14 +868,19 @@ class PreAggregationLoader {
         .concat(structureVersionsToSave.map(v => this.targetTableName(v)))
         .concat(versionEntriesToSave.map(v => this.targetTableName(v)))
         .concat([justCreatedTable]);
+
     const toDrop = actualTables
       .map(t => `${this.preAggregation.preAggregationsSchema}.${t.table_name || t.TABLE_NAME}`)
       .filter(t => tablesToSave.indexOf(t) === -1);
+
     this.logger('Dropping orphaned tables', {
       tablesToDrop: JSON.stringify(toDrop),
       requestId: this.requestId
     });
-    await Promise.all(toDrop.map(table => saveCancelFn(client.dropTable(table))));
+
+    await Promise.all(toDrop.map((table) => saveCancelFn(
+      this.queryCache.withLock(table, () => client.dropTable(table), 60 * 5)
+    )));
   }
 }
 
@@ -898,34 +897,29 @@ type PreAggregationsOptions = {
 export class PreAggregations {
   public options: PreAggregationsOptions;
 
-  private redisPrefix: string;
-
-  private driverFactory: DriverFactoryByDataSource;
-
-  private logger: any;
-
-  private queryCache: QueryCache;
-
   private cacheDriver: CacheDriverInterface;
 
   public externalDriverFactory: any;
 
   public structureVersionPersistTime: any;
 
-  private usedTablePersistTime: number;
+  private readonly usedTablePersistTime: number;
 
-  private externalRefresh: boolean;
+  private readonly externalRefresh: boolean;
 
-  private loadCacheQueue: { [dataSource: string]: QueryQueue } = {};
+  private readonly loadCacheQueue: Record<string, QueryQueue> = {};
 
-  private queue: { [dataSource: string]: QueryQueue } = {};
+  private readonly queue: Record<string, QueryQueue> = {};
 
-  public constructor(redisPrefix, clientFactory: DriverFactoryByDataSource, logger, queryCache, options) {
+  public constructor(
+    private readonly redisPrefix: string,
+    private readonly driverFactory: DriverFactoryByDataSource,
+    private readonly logger: any,
+    private readonly queryCache: QueryCache,
+    options
+  ) {
     this.options = options || {};
-    this.redisPrefix = redisPrefix;
-    this.driverFactory = clientFactory;
-    this.logger = logger;
-    this.queryCache = queryCache;
+
     this.cacheDriver = options.cacheAndQueueDriver === 'redis' ?
       new RedisCacheDriver({ pool: options.redisPool }) :
       new LocalCacheDriver();
