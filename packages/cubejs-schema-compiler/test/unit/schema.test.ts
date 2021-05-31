@@ -32,6 +32,13 @@ describe('Schema Testing', () => {
                 timeDimensionReference: createdAt,
                 granularity: \`day\`,
                 partitionGranularity: \`month\`
+            },
+            countCreatedAtWithoutReferences: {
+                external: true,
+                measures: [count],
+                timeDimensions: createdAt,
+                granularity: \`day\`,
+                partitions: \`month\`
             }
         },
       }) 
@@ -40,6 +47,14 @@ describe('Schema Testing', () => {
 
     expect(cubeEvaluator.preAggregationsForCube('CubeA')).toEqual({
       countCreatedAt: {
+        external: true,
+        granularity: 'day',
+        measureReferences: expect.any(Function),
+        timeDimensionReference: expect.any(Function),
+        partitionGranularity: 'month',
+        type: 'rollup',
+      },
+      countCreatedAtWithoutReferences: {
         external: true,
         granularity: 'day',
         measureReferences: expect.any(Function),

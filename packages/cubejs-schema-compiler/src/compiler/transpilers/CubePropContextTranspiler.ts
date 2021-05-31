@@ -3,7 +3,6 @@ import R from 'ramda';
 import { TranspilerInterface, TraverseObject } from './transpiler.interface';
 import type { CubeSymbols } from '../CubeSymbols';
 import type { CubeDictionary } from '../CubeDictionary';
-import { ErrorReporter } from '../ErrorReporter';
 
 export class CubePropContextTranspiler implements TranspilerInterface {
   public constructor(
@@ -14,46 +13,54 @@ export class CubePropContextTranspiler implements TranspilerInterface {
 
   public traverseObject(): TraverseObject {
     const self = this;
+
     return {
       CallExpression(path) {
-        const args = path.get('arguments');
-        if (path.node.callee && path.node.callee.type === 'Identifier' && (path.node.callee.name === 'view' || path.node.callee.name === 'cube')) {
-          if (args && args[args.length - 1]) {
-            const cubeName = args[0].node.type === 'StringLiteral' && args[0].node.value ||
-              args[0].node.type === 'TemplateLiteral' &&
-              args[0].node.quasis.length &&
-              args[0].node.quasis[0].value.cooked;
-            args[args.length - 1].traverse(self.sqlAndReferencesFieldVisitor(cubeName));
-            args[args.length - 1].traverse(
-              self.knownIdentifiersInjectVisitor('extends', name => self.cubeDictionary.resolveCube(name))
-            );
+        if (t.isIdentifier(path.node.callee)) {
+          const args = path.get('arguments');
+          if (['view', 'cube'].includes(path.node.callee.name)) {
+            if (args && args[args.length - 1]) {
+              const cubeName = args[0].node.type === 'StringLiteral' && args[0].node.value ||
+                args[0].node.type === 'TemplateLiteral' &&
+                args[0].node.quasis.length &&
+                args[0].node.quasis[0].value.cooked;
+              args[args.length - 1].traverse(self.sqlAndReferencesFieldVisitor(cubeName));
+              args[args.length - 1].traverse(
+                self.knownIdentifiersInjectVisitor('extends', name => self.cubeDictionary.resolveCube(name))
+              );
+            }
+          } else if (path.node.callee.name === 'context') {
+            args[args.length - 1].traverse(self.sqlAndReferencesFieldVisitor(null));
           }
-          // @ts-ignore @todo Unsafely?
-        } else if (path.node.callee.name === 'context') {
-          args[args.length - 1].traverse(self.sqlAndReferencesFieldVisitor(null));
         }
       }
     };
   }
 
-  protected sqlAndReferencesFieldVisitor(cubeName) {
+  protected sqlAndReferencesFieldVisitor(cubeName: string|null) {
     return this.knownIdentifiersInjectVisitor(
       /^(sql|measureReferences|dimensionReferences|segmentReferences|timeDimensionReference|rollupReferences|drillMembers|drillMemberReferences|contextMembers|columns)$/,
       name => this.cubeSymbols.resolveSymbol(cubeName, name) || this.cubeSymbols.isCurrentCube(name)
     );
   }
 
-  protected knownIdentifiersInjectVisitor(field, resolveSymbol) {
+  protected knownIdentifiersInjectVisitor(field: RegExp|string, resolveSymbol: (name: string) => void): TraverseObject {
     const self = this;
+
     return {
       ObjectProperty(path) {
-        if (path.node.key.type === 'Identifier' && path.node.key.name.match(field)) {
+        if (t.isIdentifier(path.node.key) && path.node.key.name.match(field)) {
           const knownIds = self.collectKnownIdentifiers(
             resolveSymbol,
             path.get('value')
           );
           path.get('value').replaceWith(
-            t.arrowFunctionExpression(knownIds.map(i => t.identifier(i)), path.node.value, false)
+            t.arrowFunctionExpression(
+              knownIds.map(i => t.identifier(i)),
+              // @todo Replace any with assert expression
+              <any>path.node.value,
+              false
+            )
           );
         }
       }
