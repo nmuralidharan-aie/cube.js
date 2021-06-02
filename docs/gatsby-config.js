@@ -54,6 +54,12 @@ const config = {
       },
     },
     {
+      resolve: 'gatsby-source-docker-hub',
+      options: {
+        username: 'cubejs',
+      },
+    },
+    {
       resolve: 'gatsby-plugin-typescript',
       options: {
         isTSX: true, // defaults to false
